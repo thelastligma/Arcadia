@@ -7,11 +7,7 @@ Quick Start
 -----------
 ```bash
 git clone https://github.com/thelastligma/Arcadia.git
-cd Arcadia```
+cd Arcadia
 
-npm install
-```bash
-npm start
-```bash
-npm run build:mac
-  
+```
+d
