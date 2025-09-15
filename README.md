@@ -7,18 +7,18 @@ Quick Start
 -----------
 1. Clone the repo (or download the ZIP):
 
-   ```git clone https://github.com/thelastligma/Arcadia.git```
+   '''git clone https://github.com/thelastligma/Arcadia.git cd Arcadia'''
 
-2. Install dependencies (run in project folder):
+3. Install dependencies (run in project folder):
 
-   ```npm install```
+   '''npm install'''
 
-3. Run the app in development:
+4. Run the app in development:
 
-   ```npm start```
+   '''npm start'''
 
-4. Build a macOS app (.app):
+5. Build a macOS app (.app):
 
-   ```npm run build:mac```
+   '''npm run build:mac'''
 
   
