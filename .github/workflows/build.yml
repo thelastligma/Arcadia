@@ -1,0 +1,138 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-latest
+            platform: mac
+            artifact: ArcadiaUI-darwin-x64
+          - os: ubuntu-latest
+            platform: linux
+            artifact: ArcadiaUI-linux-x64
+          - os: windows-latest
+            platform: windows
+            artifact: ArcadiaUI-win32-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build for macOS (x64)
+      if: matrix.platform == 'mac'
+      run: npm run package:mac
+
+    - name: Build for macOS (universal)
+      if: matrix.platform == 'mac'
+      run: npm run build:mac
+
+    - name: Build for Linux
+      if: matrix.platform == 'linux'
+      run: npx electron-packager . ArcadiaUI --platform=linux --arch=x64 --asar.compression=zstd --overwrite
+
+    - name: Build for Windows
+      if: matrix.platform == 'windows'
+      run: npx electron-packager . ArcadiaUI --platform=win32 --arch=x64 --asar.compression=zstd --overwrite
+
+    - name: Archive macOS x64 build
+      if: matrix.platform == 'mac'
+      run: |
+        cd ArcadiaUI-darwin-x64
+        zip -r ../ArcadiaUI-macOS-x64.zip .
+        cd ..
+
+    - name: Archive macOS universal build
+      if: matrix.platform == 'mac'
+      run: |
+        if [ -d "ArcadiaUI-darwin-universal" ]; then
+          cd ArcadiaUI-darwin-universal
+          zip -r ../ArcadiaUI-macOS-universal.zip .
+          cd ..
+        fi
+
+    - name: Archive Linux build
+      if: matrix.platform == 'linux'
+      run: |
+        cd ArcadiaUI-linux-x64
+        tar -czf ../ArcadiaUI-linux-x64.tar.gz .
+        cd ..
+
+    - name: Archive Windows build
+      if: matrix.platform == 'windows'
+      run: |
+        Compress-Archive -Path ArcadiaUI-win32-x64\* -DestinationPath ArcadiaUI-windows-x64.zip
+
+    - name: Upload macOS x64 artifact
+      if: matrix.platform == 'mac'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ArcadiaUI-macOS-x64
+        path: ArcadiaUI-macOS-x64.zip
+
+    - name: Upload macOS universal artifact
+      if: matrix.platform == 'mac' && hashFiles('ArcadiaUI-macOS-universal.zip') != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ArcadiaUI-macOS-universal
+        path: ArcadiaUI-macOS-universal.zip
+
+    - name: Upload Linux artifact
+      if: matrix.platform == 'linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ArcadiaUI-linux-x64
+        path: ArcadiaUI-linux-x64.tar.gz
+
+    - name: Upload Windows artifact
+      if: matrix.platform == 'windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ArcadiaUI-windows-x64
+        path: ArcadiaUI-windows-x64.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/ArcadiaUI-macOS-x64/ArcadiaUI-macOS-x64.zip
+          artifacts/ArcadiaUI-macOS-universal/ArcadiaUI-macOS-universal.zip
+          artifacts/ArcadiaUI-linux-x64/ArcadiaUI-linux-x64.tar.gz
+          artifacts/ArcadiaUI-windows-x64/ArcadiaUI-windows-x64.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
