@@ -1,0 +1,32 @@
+{
+  "appId": "com.arcadia.app",
+  "productName": "Arcadia",
+  "directories": {
+    "output": "dist"
+  },
+  "mac": {
+    "icon": "assets/icon.png",
+    "category": "public.app-category.utilities",
+    "hardenedRuntime": true,
+    "target": [
+      "dmg",
+      "zip"
+    ]
+  },
+  "dmg": {
+    "backgroundColor": "#1e1e1e",
+    "contents": [
+      {
+        "x": 130,
+        "y": 200,
+        "type": "file"
+      },
+      {
+        "x": 410,
+        "y": 200,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  }
+}
