@@ -13,9 +13,17 @@ git clone --depth=1 "$REPO_URL" "$TMPDIR/arcadia"
 
 cd "$TMPDIR/arcadia"
 
+# If package.json is not at repo root, try to find it in a nested folder (common when repo contains a subfolder)
 if [ ! -f package.json ]; then
-	echo "ERROR: package.json not found in cloned repo." >&2
-	exit 1
+	SUB_PKG_PATH=$(find . -maxdepth 3 -type f -name package.json -print | head -n 1 || true)
+	if [ -n "$SUB_PKG_PATH" ]; then
+		SUBDIR=$(dirname "$SUB_PKG_PATH")
+		echo "Found package.json in cloned repo at: $SUBDIR. Changing directory into it."
+		cd "$SUBDIR"
+	else
+		echo "ERROR: package.json not found in cloned repo." >&2
+		exit 1
+	fi
 fi
 
 echo "Installing npm dependencies..."
