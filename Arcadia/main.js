@@ -356,7 +356,7 @@ function createWindow() {
   // Health check for MacSploit: attempt TCP connect to 5553-5562
   ipcMain.handle('check-macsploit', async () => {
     const START = 5553;
-    const END = 5562;
+    const END = 5563;
     for (let port = START; port <= END; port++) {
       try {
         const ok = await new Promise((resolve) => {
