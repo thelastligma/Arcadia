@@ -1,8 +1,9 @@
+
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Arcadia macOS Installer
-# Clones repo, installs deps, builds macOS app, installs to /Applications.
+# Non-interactive installer that clones the Arcadia repo, builds the mac app,
+# and installs the resulting .app into /Applications.
 
 REPO_URL="https://github.com/thelastligma/Arcadia.git"
 
@@ -17,7 +18,7 @@ if [ ! -f package.json ]; then
     SUB_PKG_PATH=$(find . -maxdepth 5 -type f -iname "package.json" -print | head -n 1 || true)
     if [ -n "$SUB_PKG_PATH" ]; then
         SUBDIR=$(dirname "$SUB_PKG_PATH")
-        echo "Found package.json at: $SUBDIR"
+        echo "Found package.json in cloned repo at: $SUBDIR. Changing directory into it."
         cd "$SUBDIR"
     else
         echo "ERROR: package.json not found in cloned repo." >&2
@@ -33,7 +34,9 @@ else
     exit 1
 fi
 
-echo "Building Arcadia macOS app..."
+# Icon generation removed
+
+echo "Building macOS app with npm run build:mac..."
 npm run build:mac
 
 APP_PATH=$(find dist -name "*.app" | head -n 1 || true)
@@ -44,15 +47,13 @@ fi
 
 APP_NAME=$(basename "$APP_PATH")
 echo "Installing $APP_NAME to /Applications..."
-
 sudo rm -rf "/Applications/$APP_NAME" 2>/dev/null || true
 sudo cp -R "$APP_PATH" "/Applications/$APP_NAME"
 sudo xattr -cr "/Applications/$APP_NAME" || true
 
 echo "Installed: /Applications/$APP_NAME"
-echo "Arcadia installation complete."
 
-echo "Cleaning temporary files..."
+echo "Cleaning up temporary clone: $TMPDIR"
 rm -rf "$TMPDIR"
 
 echo "Done."
