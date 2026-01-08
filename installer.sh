@@ -11,10 +11,10 @@ echo "===================="
 
 # 1. Detect Architecture
 ARCH=$(uname -m)
-if [[ "$ARCH" == "silicon-arm64" ]]; then
+if [[ "$ARCH" == "arm64" ]]; then
   FILE_NAME="Arcadia-silicon.zip"
   echo "Detected: Apple Silicon ($ARCH)"
-elif [[ "$ARCH" == "intel-x64" ]]; then
+elif [[ "$ARCH" == "x86_64" ]]; then
   FILE_NAME="Arcadia-intel.zip"
   echo "Detected: Intel ($ARCH)"
 else
