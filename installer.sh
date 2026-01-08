@@ -35,7 +35,7 @@ if [ -z "$RELEASE_JSON" ]; then
   exit 1
 fi
 
-if ! Arcadia_URL=$(python3 - "$ARCH_KEY" <<'PY' <<<"$RELEASE_JSON"
+Arcadia_URL=$(echo "$RELEASE_JSON" | python3 - "$ARCH_KEY" - <<'PY'
 import json, sys
 arch_key = sys.argv[1].lower()
 data = json.loads(sys.stdin.read())
@@ -48,10 +48,10 @@ for asset in data.get("assets", []):
             sys.exit(0)
 sys.exit(1)
 PY
-); then
+) || {
   echo "❌ No release asset found for architecture '$ARCH_KEY' in tag '$TAG'."
   exit 1
-fi
+}
 
 FILE_NAME=$(basename "$Arcadia_URL")
 TMP_ZIP="/tmp/Arcadia_Install_${ARCH_KEY}.zip"
