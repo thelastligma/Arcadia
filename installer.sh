@@ -2,11 +2,8 @@
 
 clear
 
-# Specific settings for your repo
 REPO="thelastigma/Arcadia"
-# Hardcoding the tag since your screenshot shows the tag is literally "Releases"
 TAG="Releases"
-# Hardcoding the version based on your screenshot filenames
 VERSION="1.0.0"
 
 echo "🚀 Arcadia Installer"
@@ -26,6 +23,7 @@ else
 fi
 
 # 2. Construct the direct URL
+# This bypasses the "latest" redirect which was causing your 404
 Arcadia_URL="https://github.com/$REPO/releases/download/$TAG/$FILE_NAME"
 TMP_ZIP="/tmp/Arcadia_Install.zip"
 
