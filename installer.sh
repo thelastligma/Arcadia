@@ -2,7 +2,7 @@
 
 clear
 
-REPO="thelastigma/Arcadia"
+REPO="thelastligma/Arcadia"
 TAG="Releases"
 VERSION="1.0.0"
 
