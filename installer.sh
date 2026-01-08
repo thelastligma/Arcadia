@@ -4,18 +4,24 @@ clear
 
 REPO="thelastigma/Arcadia"
 
-# 1. Determine the latest version tag from GitHub
-# This captures "Arcadia-v1.0.0-arm64" from your release
-LATEST_TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/$REPO/releases/latest | sed 's|.*/tag/||')
+# 1. Determine the latest version tag from GitHub using the API for better reliability
+echo "📥 Fetching latest release info..."
+LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ]; then
+    echo "❌ Error: Could not fetch the latest tag. Check your internet connection or Repo name."
+    exit 1
+fi
+
 echo "Latest tag determined to be: $LATEST_TAG"
 
-# Extract just the version number (e.g., 1.0.0) for the filenames
-# This removes "Arcadia-v" and everything after the version number
-VER_NUM=$(echo "$LATEST_TAG" | sed -n 's/.*v\([0-9.]*\).*/\1/p')
+# Extract just the version number (e.g., 1.0.0)
+# This handles tags like "Arcadia-v1.0.0-arm64" or "v1.0.0"
+VER_NUM=$(echo "$LATEST_TAG" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
 echo "Version number parsed as: $VER_NUM"
 echo ""
 
-# 2. Detect Architecture and set the specific ZIP name from your screenshot
+# 2. Detect Architecture and set the specific ZIP name
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" ]]; then
   # Matches: Arcadia-1.0.0-arm64-mac.zip
@@ -49,9 +55,10 @@ curl -fsSL "$Arcadia_URL" -o "$TMP_ZIP" || {
 
 # 6. Unzip and Locate App
 echo "Unzipping..."
+rm -rf /tmp/Arcadia_Extract
 unzip -o -q "$TMP_ZIP" -d /tmp/Arcadia_Extract
 
-# Find the .app bundle (handles nested folders automatically)
+# Find the .app bundle
 APP_SRC=$(find /tmp/Arcadia_Extract -name "Arcadia.app" -type d | head -n1)
 
 if [ -z "$APP_SRC" ]; then
@@ -61,13 +68,16 @@ fi
 
 # 7. Install to Applications
 echo "Installing to /Applications..."
-mv "$APP_SRC" "/Applications/Arcadia.app" || {
-  echo "❌ Failed to move to Applications. Try running with sudo."
-  exit 1
-}
+# Checks if sudo is needed for the Applications folder
+if [ -w "/Applications" ]; then
+    mv "$APP_SRC" "/Applications/Arcadia.app"
+else
+    echo "Please enter your password to move the app to Applications:"
+    sudo mv "$APP_SRC" "/Applications/Arcadia.app"
+fi
 
 # 8. Security Bypass (Quarantine)
-# This prevents the "App is damaged" message common with GitHub downloads
+echo "🛡️  Adjusting security permissions..."
 xattr -rd com.apple.quarantine /Applications/Arcadia.app 2>/dev/null || true
 
 # 9. Final Cleanup
@@ -76,4 +86,5 @@ rm -rf /tmp/Arcadia_Extract
 
 echo ""
 echo "✅ Arcadia installed successfully!"
+echo "Launching Arcadia..."
 open -a /Applications/Arcadia.app
