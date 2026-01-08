@@ -2,89 +2,80 @@
 
 clear
 
+# Specific settings for your repo
 REPO="thelastigma/Arcadia"
+# Hardcoding the tag since your screenshot shows the tag is literally "Releases"
+TAG="Releases"
+# Hardcoding the version based on your screenshot filenames
+VERSION="1.0.0"
 
-# 1. Determine the latest version tag from GitHub using the API for better reliability
-echo "📥 Fetching latest release info..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+echo "🚀 Arcadia Installer"
+echo "===================="
 
-if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ]; then
-    echo "❌ Error: Could not fetch the latest tag. Check your internet connection or Repo name."
-    exit 1
-fi
-
-echo "Latest tag determined to be: $LATEST_TAG"
-
-# Extract just the version number (e.g., 1.0.0)
-# This handles tags like "Arcadia-v1.0.0-arm64" or "v1.0.0"
-VER_NUM=$(echo "$LATEST_TAG" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
-echo "Version number parsed as: $VER_NUM"
-echo ""
-
-# 2. Detect Architecture and set the specific ZIP name
+# 1. Detect Architecture
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" ]]; then
-  # Matches: Arcadia-1.0.0-arm64-mac.zip
-  FILE_NAME="Arcadia-${VER_NUM}-arm64-mac.zip"
+  FILE_NAME="Arcadia-${VERSION}-arm64-mac.zip"
   echo "Detected: Apple Silicon ($ARCH)"
 elif [[ "$ARCH" == "x86_64" ]]; then
-  # Matches: Arcadia-1.0.0-mac.zip
-  FILE_NAME="Arcadia-${VER_NUM}-mac.zip"
+  FILE_NAME="Arcadia-${VERSION}-mac.zip"
   echo "Detected: Intel ($ARCH)"
 else
   echo "❌ Unsupported architecture: $ARCH"
   exit 1
 fi
 
-# 3. Construct URL and Temp Paths
-Arcadia_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILE_NAME"
+# 2. Construct the direct URL
+Arcadia_URL="https://github.com/$REPO/releases/download/$TAG/$FILE_NAME"
 TMP_ZIP="/tmp/Arcadia_Install.zip"
 
-# 4. Cleanup old installation
+echo "🔗 Target URL: $Arcadia_URL"
+
+# 3. Cleanup old installation
 if [ -d "/Applications/Arcadia.app" ]; then
-  echo "Arcadia is already installed. Updating..."
+  echo "Updating existing installation..."
   rm -rf /Applications/Arcadia.app
 fi
 
-# 5. Download
-echo "Downloading $FILE_NAME..."
+# 4. Download
+echo "📥 Downloading $FILE_NAME..."
 curl -fsSL "$Arcadia_URL" -o "$TMP_ZIP" || {
-  echo "❌ Failed to download. Ensure the file $FILE_NAME exists in the $LATEST_TAG release."
+  echo ""
+  echo "❌ Error 404: File not found on GitHub."
+  echo "Please verify that '$FILE_NAME' is uploaded to the '$TAG' release."
   exit 1
 }
 
-# 6. Unzip and Locate App
-echo "Unzipping..."
+# 5. Unzip
+echo "📂 Extracting..."
 rm -rf /tmp/Arcadia_Extract
+mkdir -p /tmp/Arcadia_Extract
 unzip -o -q "$TMP_ZIP" -d /tmp/Arcadia_Extract
 
-# Find the .app bundle
+# 6. Locate .app bundle
 APP_SRC=$(find /tmp/Arcadia_Extract -name "Arcadia.app" -type d | head -n1)
 
 if [ -z "$APP_SRC" ]; then
-  echo "❌ Error: Could not find Arcadia.app in the downloaded archive."
+  echo "❌ Error: Could not find Arcadia.app inside the zip."
   exit 1
 fi
 
-# 7. Install to Applications
-echo "Installing to /Applications..."
-# Checks if sudo is needed for the Applications folder
+# 7. Install
+echo "💾 Moving to Applications..."
 if [ -w "/Applications" ]; then
     mv "$APP_SRC" "/Applications/Arcadia.app"
 else
-    echo "Please enter your password to move the app to Applications:"
     sudo mv "$APP_SRC" "/Applications/Arcadia.app"
 fi
 
-# 8. Security Bypass (Quarantine)
-echo "🛡️  Adjusting security permissions..."
+# 8. Fix macOS "Damaged App" error
+echo "🛡️  Removing quarantine flags..."
 xattr -rd com.apple.quarantine /Applications/Arcadia.app 2>/dev/null || true
 
-# 9. Final Cleanup
+# 9. Cleanup
 rm "$TMP_ZIP"
 rm -rf /tmp/Arcadia_Extract
 
 echo ""
 echo "✅ Arcadia installed successfully!"
-echo "Launching Arcadia..."
 open -a /Applications/Arcadia.app
