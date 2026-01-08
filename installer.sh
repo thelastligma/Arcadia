@@ -1,84 +1,81 @@
 #!/bin/bash
 
-clear
+# Arcadia Installer
+set -e
 
 REPO="thelastigma/Arcadia"
+# This URL will redirect us to the actual download link
+LATEST_RELEASE_URL="https://api.github.com/repos/$REPO/releases/latest"
 
-# 1. Get the latest version tag (e.g., v1.0.0)
-LATEST_VER=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/$REPO/releases/latest | sed 's|.*/tag/||')
-echo "Latest version determined to be: $LATEST_VER"
-echo ""
+echo "🚀 Arcadia Installer"
+echo "===================="
 
-# 2. Detect Architecture and set the specific ZIP name
+# 1. Architecture Detection
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" ]]; then
-  # Matches: Arcadia-1.0.0-arm64-mac.zip
-  FILE_NAME="Arcadia-${LATEST_VER#v}-arm64-mac.zip"
-  echo "Detected architecture: Apple Silicon (arm64)"
-elif [[ "$ARCH" == "x86_64" ]]; then
-  # Matches: Arcadia-1.0.0-mac.zip
-  FILE_NAME="Arcadia-${LATEST_VER#v}-mac.zip"
-  echo "Detected architecture: Intel (x86_64)"
+    echo "Detected: Apple Silicon ($ARCH)"
+    # We look for the file that ends exactly with arm64-mac.zip
+    SEARCH_PATTERN="arm64-mac\.zip"
 else
-  echo "Unsupported architecture: $ARCH"
-  exit 1
+    echo "Detected: Intel ($ARCH)"
+    # We look for the file that ends with mac.zip but DOES NOT contain arm64
+    SEARCH_PATTERN="mac\.zip"
 fi
 
-# 3. Construct the Download URL
-# Based on your screenshot, the URL pattern is: releases/download/v1.0.0/FILENAME
-Arcadia_URL="https://github.com/$REPO/releases/download/$LATEST_VER/$FILE_NAME"
-TMP_ZIP="/tmp/Arcadia_Install.zip"
+# 2. Get the specific download URL from GitHub API
+echo "📥 Fetching download link..."
+RELEASE_DATA=$(curl -s "$LATEST_RELEASE_URL")
 
-# 4. Clean up old installation
-if [ -d "/Applications/Arcadia.app" ]; then
-  echo "Arcadia is already installed."
-  echo "Updating / Reinstalling Arcadia..."
-  rm -rf /Applications/Arcadia.app
+# Extract the URL. If Intel, we exclude 'arm64' lines to avoid picking the wrong zip.
+if [[ "$ARCH" == "arm64" ]]; then
+    DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url" | grep "$SEARCH_PATTERN" | cut -d '"' -f 4 | head -n 1)
+else
+    DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url" | grep "$SEARCH_PATTERN" | grep -v "arm64" | cut -d '"' -f 4 | head -n 1)
 fi
 
-# 5. Clean up temporary files
-echo "Cleaning up temporary files..."
-rm -rf "$TMP_ZIP" /tmp/Arcadia.app
-
-# 6. Download
-echo "Downloading Arcadia..."
-curl -fsSL "$Arcadia_URL" -o "$TMP_ZIP" || {
-  echo "❌ Failed to download Arcadia. Ensure the filename $FILE_NAME exists in the release."
-  exit 1
-}
-
-# 7. Unzip
-echo "Unzipping Arcadia..."
-# Unzip to /tmp first to handle the move logic
-unzip -o -q "$TMP_ZIP" -d /tmp || {
-  echo "❌ Failed to unzip Arcadia"
-  exit 1
-}
-
-# 8. Locate and Install
-# Using 'find' ensures we grab the .app even if the zip structure changes slightly
-APP_SRC=$(find /tmp -name "Arcadia.app" -type d -maxdepth 2 | head -n1)
-
-if [ -z "$APP_SRC" ]; then
-  echo "❌ Error: Could not find Arcadia.app in the downloaded archive."
-  exit 1
+# Safety check
+if [ -z "$DOWNLOAD_URL" ]; then
+    echo "❌ Error: Could not find the zip file on GitHub."
+    echo "Please ensure the file on GitHub is named exactly 'Arcadia-v1.0.0-arm64-mac.zip' or similar."
+    exit 1
 fi
 
-echo "Installing Arcadia..."
-mv "$APP_SRC" "/Applications/Arcadia.app" || {
-  echo "❌ Failed to move Arcadia to Applications"
-  exit 1
-}
+# 3. Download
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf $TEMP_DIR" EXIT
+ZIP_FILE="$TEMP_DIR/arcadia.zip"
 
-# 9. Security & Cleanup
-echo "Applying security fixes..."
-xattr -rd com.apple.quarantine /Applications/Arcadia.app 2>/dev/null || true
+echo "📦 Downloading Arcadia..."
+curl -L -# -o "$ZIP_FILE" "$DOWNLOAD_URL"
 
-rm "$TMP_ZIP"
+# 4. Extraction
+echo "📂 Extracting..."
+unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
 
-echo ""
-echo "✅ Arcadia installed successfully!"
-echo "You can now find Arcadia in your Applications folder."
+# 5. Finding and Moving the App
+# This finds Arcadia.app even if it's inside a folder in the zip
+APP_PATH=$(find "$TEMP_DIR" -name "Arcadia.app" -type d -maxdepth 3 | head -n 1)
 
-# 10. Launch
-open -a /Applications/Arcadia.app
+if [ -z "$APP_PATH" ]; then
+    echo "❌ Error: Arcadia.app not found inside the zip."
+    exit 1
+fi
+
+echo "💾 Installing to /Applications..."
+# Use sudo only if we don't have permission to write to /Applications
+if [ -w "/Applications" ]; then
+    rm -rf "/Applications/Arcadia.app"
+    cp -R "$APP_PATH" "/Applications/"
+else
+    echo "Please enter your Mac password to finish installation:"
+    sudo rm -rf "/Applications/Arcadia.app"
+    sudo cp -R "$APP_PATH" "/Applications/"
+fi
+
+# 6. Final Polish
+echo "🛡️  Clearing system quarantine..."
+# This stops the "App is damaged" message for non-App Store apps
+xattr -rd com.apple.quarantine "/Applications/Arcadia.app" 2>/dev/null || true
+
+echo "✅ Done! Launching Arcadia..."
+open "/Applications/Arcadia.app"
