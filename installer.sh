@@ -1,33 +1,62 @@
 #!/bin/bash
 
+set -euo pipefail
 clear
 
 REPO="thelastligma/Arcadia"
 TAG="Releases"
-VERSION="1.0.0"
 
 echo "🚀 Arcadia Installer"
 echo "===================="
 
 # 1. Detect Architecture
 ARCH=$(uname -m)
-if [[ "$ARCH" == "arm64" ]]; then
-  FILE_NAME="Arcadia-silicon.zip"
-  echo "Detected: Apple Silicon ($ARCH)"
-elif [[ "$ARCH" == "x86_64" ]]; then
-  FILE_NAME="Arcadia-intel.zip"
-  echo "Detected: Intel ($ARCH)"
-else
-  echo "❌ Unsupported architecture: $ARCH"
+case "$ARCH" in
+  arm64|aarch64)
+    ARCH_KEY="silicon"
+    echo "Detected: Apple Silicon ($ARCH)"
+    ;;
+  x86_64|amd64)
+    ARCH_KEY="intel"
+    echo "Detected: Intel ($ARCH)"
+    ;;
+  *)
+    echo "❌ Unsupported architecture: $ARCH"
+    exit 1
+    ;;
+esac
+
+# 2. Resolve the correct asset from the tagged release
+API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
+echo "🔎 Fetching release metadata..."
+RELEASE_JSON=$(curl -fsSL "$API_URL" || true)
+if [ -z "$RELEASE_JSON" ]; then
+  echo "❌ Could not fetch release info for tag '$TAG'."
   exit 1
 fi
 
-# 2. Construct the direct URL
-# This bypasses the "latest" redirect which was causing your 404
-Arcadia_URL="https://github.com/thelastligma/Arcadia/releases/tag/Releases"
-TMP_ZIP="/tmp/Arcadia_Install.zip"
+if ! Arcadia_URL=$(python3 - "$ARCH_KEY" <<'PY' <<<"$RELEASE_JSON"
+import json, sys
+arch_key = sys.argv[1].lower()
+data = json.loads(sys.stdin.read())
+for asset in data.get("assets", []):
+    name = asset.get("name", "").lower()
+    if arch_key in name and name.endswith(".zip"):
+        url = asset.get("browser_download_url", "")
+        if url:
+            print(url)
+            sys.exit(0)
+sys.exit(1)
+PY
+); then
+  echo "❌ No release asset found for architecture '$ARCH_KEY' in tag '$TAG'."
+  exit 1
+fi
 
+FILE_NAME=$(basename "$Arcadia_URL")
+TMP_ZIP="/tmp/Arcadia_Install_${ARCH_KEY}.zip"
 echo "🔗 Target URL: $Arcadia_URL"
+echo "📦 Using asset: $FILE_NAME"
 
 # 3. Cleanup old installation
 if [ -d "/Applications/Arcadia.app" ]; then
@@ -37,10 +66,9 @@ fi
 
 # 4. Download
 echo "📥 Downloading $FILE_NAME..."
-curl -fsSL "$Arcadia_URL" -o "$TMP_ZIP" || {
+curl -fL "$Arcadia_URL" -o "$TMP_ZIP" || {
   echo ""
-  echo "❌ Error 404: File not found on GitHub."
-  echo "Please verify that '$FILE_NAME' is uploaded to the '$TAG' release."
+  echo "❌ Download failed. Please verify that '$FILE_NAME' is still attached to the '$TAG' release."
   exit 1
 }
 
