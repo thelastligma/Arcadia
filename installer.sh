@@ -21,11 +21,11 @@ fi
 # Detect CPU architecture
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" ]]; then
-    DOWNLOAD_NAME="Arcadia-1.0.0-arm64-mac.zip"
     ARCH_NAME="Apple Silicon (M1/M2/M3)"
+    SEARCH_PATTERN="arm64.*\\.zip"
 elif [[ "$ARCH" == "x86_64" ]]; then
-    DOWNLOAD_NAME="Arcadia-1.0.0-mac.zip"
     ARCH_NAME="Intel"
+    SEARCH_PATTERN="mac\\.zip"
 else
     echo "❌ Error: Unsupported architecture: $ARCH"
     exit 1
@@ -38,11 +38,17 @@ echo ""
 echo "📥 Fetching latest release from GitHub..."
 RELEASE_JSON=$(curl -s "$RELEASE_URL")
 
-# Extract download URL
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o "\"browser_download_url\": \"[^\"]*$DOWNLOAD_NAME\"" | head -n1 | cut -d'"' -f4)
+# Extract download URL - find first matching .zip for the architecture
+if [[ "$ARCH" == "arm64" ]]; then
+    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o "\"browser_download_url\": \"[^\"]*arm64[^\"]*\\.zip\"" | head -n1 | cut -d'"' -f4)
+else
+    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o "\"browser_download_url\": \"[^\"]*mac\\.zip\"" | grep -v "arm64" | head -n1 | cut -d'"' -f4)
+fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
-    echo "❌ Error: Could not find $DOWNLOAD_NAME in the latest release."
+    echo "❌ Error: Could not find compatible .zip file in the latest release."
+    echo "Available files:"
+    echo "$RELEASE_JSON" | grep -o "\"browser_download_url\": \"[^\"]*\"" | cut -d'"' -f4
     exit 1
 fi
 
@@ -53,7 +59,8 @@ echo ""
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-ZIP_FILE="$TEMP_DIR/$DOWNLOAD_NAME"
+DOWNLOAD_FILENAME=$(basename "$DOWNLOAD_URL")
+ZIP_FILE="$TEMP_DIR/$DOWNLOAD_FILENAME"
 
 # Download the archive
 echo "📦 Downloading Arcadia..."
