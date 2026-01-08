@@ -29,16 +29,16 @@ esac
 # 2. Resolve the correct asset from the tagged release
 API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
 echo "🔎 Fetching release metadata..."
-RELEASE_JSON=$(curl -fsSL "$API_URL" || true)
-if [ -z "$RELEASE_JSON" ]; then
-  echo "❌ Could not fetch release info for tag '$TAG'."
-  exit 1
-fi
 
-Arcadia_URL=$(echo "$RELEASE_JSON" | python3 - "$ARCH_KEY" - <<'PY'
+Arcadia_URL=$(curl -fsSL "$API_URL" | python3 - "$ARCH_KEY" <<'PY'
 import json, sys
 arch_key = sys.argv[1].lower()
-data = json.loads(sys.stdin.read())
+try:
+    data = json.load(sys.stdin)
+except json.JSONDecodeError as e:
+    print(f"Error: Invalid JSON from API", file=sys.stderr)
+    sys.exit(1)
+
 for asset in data.get("assets", []):
     name = asset.get("name", "").lower()
     if arch_key in name and name.endswith(".zip"):
