@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # Arcadia Installer
-# Downloads from GitHub and installs to /Applications, then opens the app
-
 set -e
 
 REPO="thelastigma/Arcadia"
@@ -10,86 +8,68 @@ RELEASE_URL="https://api.github.com/repos/$REPO/releases/latest"
 
 echo "🚀 Arcadia Installer"
 echo "===================="
-echo ""
 
-# Check if running on macOS
-if [[ "$OSTYPE" != "darwin"* ]]; then
-    echo "❌ Error: This installer is for macOS only."
-    exit 1
-fi
-
-# Detect CPU architecture
+# 1. Architecture Detection
 ARCH=$(uname -m)
 if [[ "$ARCH" == "arm64" ]]; then
-    ARCH_NAME="Apple Silicon (M1/M2/M3/M4)"
-    # Matches the specific file in your screenshot
     SEARCH_PATTERN="Arcadia-.*-arm64-mac\.zip"
-elif [[ "$ARCH" == "x86_64" ]]; then
-    ARCH_NAME="Intel"
-    # Matches the Intel file while avoiding the arm64 one
-    SEARCH_PATTERN="Arcadia-.*-mac\.zip"
 else
-    echo "❌ Error: Unsupported architecture: $ARCH"
-    exit 1
+    SEARCH_PATTERN="Arcadia-.*-mac\.zip"
 fi
 
-echo "Detected macOS: $ARCH_NAME"
-echo ""
-
-# Fetch the latest release info
-echo "📥 Fetching latest release info from GitHub..."
+# 2. Robust URL Extraction
+# We use 'tr' and 'sed' to ensure we grab the clean URL from the JSON
+echo "📥 Fetching latest release info..."
 RELEASE_JSON=$(curl -s "$RELEASE_URL")
+DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -oE "https://github.com/[^\"]+$SEARCH_PATTERN" | grep -v "Source code" | head -n1)
 
-# Extract download URL
-if [[ "$ARCH" == "arm64" ]]; then
-    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o "https://github.com/[^\"]*$SEARCH_PATTERN" | head -n1)
-else
-    # For Intel, we specifically exclude arm64 to avoid picking up the wrong zip
-    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o "https://github.com/[^\"]*$SEARCH_PATTERN" | grep -v "arm64" | head -n1)
+# Fallback check: if the first grep fails, Intel might be named simply "mac.zip"
+if [[ -z "$DOWNLOAD_URL" && "$ARCH" == "x86_64" ]]; then
+    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -oE "https://github.com/[^\"]+mac\.zip" | grep -v "arm64" | head -n1)
 fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
-    echo "❌ Error: Could not find compatible .zip file in the latest release."
+    echo "❌ Error: Could not find compatible .zip for $ARCH."
     exit 1
 fi
 
-echo "Found download: $(basename "$DOWNLOAD_URL")"
-echo ""
-
-# Create temporary directory
+# 3. Secure Temp Space
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
+ZIP_FILE="$TEMP_DIR/download.zip"
 
-DOWNLOAD_FILENAME=$(basename "$DOWNLOAD_URL")
-ZIP_FILE="$TEMP_DIR/$DOWNLOAD_FILENAME"
+# 4. Download and Unzip
+echo "📦 Downloading: $(basename "$DOWNLOAD_URL")"
+curl -L -# -o "$ZIP_FILE" "$DOWNLOAD_URL"
 
-# Download the archive
-echo "📦 Downloading Arcadia..."
-curl -L -o "$ZIP_FILE" "$DOWNLOAD_URL"
-
-# Extract
 echo "📂 Extracting..."
 unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
 
-# Find the app bundle (looking deeper in case of nested folders)
+# 5. Locate Bundle
 APP_BUNDLE=$(find "$TEMP_DIR" -name "Arcadia.app" -type d -maxdepth 3 | head -n1)
-
 if [ -z "$APP_BUNDLE" ]; then
-    echo "❌ Error: Could not find Arcadia.app in the archive."
+    echo "❌ Error: Arcadia.app not found in zip."
     exit 1
 fi
 
-# Install to /Applications
+# 6. Smart Install (Handles Permissions)
 INSTALL_PATH="/Applications/Arcadia.app"
 echo "💾 Installing to /Applications..."
 
-# Remove existing installation if present (requires sudo if /Apps is protected)
-if [ -d "$INSTALL_PATH" ]; then
+# If we don't have write access, ask for sudo
+if [ ! -w "/Applications" ]; then
+    echo "Password required to install to /Applications:"
+    sudo rm -rf "$INSTALL_PATH"
+    sudo cp -R "$APP_BUNDLE" "$INSTALL_PATH"
+    sudo chown -R $(whoami):admin "$INSTALL_PATH"
+else
     rm -rf "$INSTALL_PATH"
+    cp -R "$APP_BUNDLE" "$INSTALL_PATH"
 fi
 
-cp -R "$APP_BUNDLE" "$INSTALL_PATH"
+# 7. Bypass "App is Damaged" / Quarantine (Crucial for GitHub downloads)
+echo "🛡️  Adjusting permissions..."
+xattr -rd com.apple.quarantine "$INSTALL_PATH" 2>/dev/null || true
 
-echo "✅ Installation complete!"
-echo "🚀 Launching Arcadia..."
+echo "✅ Success!"
 open "$INSTALL_PATH"
