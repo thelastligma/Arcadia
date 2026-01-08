@@ -1,10 +1,8 @@
 #!/bin/bash
-
 set -euo pipefail
 clear
 
 REPO="thelastligma/Arcadia"
-TAG="Releases"
 
 echo "🚀 Arcadia Installer"
 echo "===================="
@@ -13,11 +11,11 @@ echo "===================="
 ARCH=$(uname -m)
 case "$ARCH" in
   arm64|aarch64)
-    ARCH_KEY="silicon"
+    ARCH_KEY="arm64"
     echo "Detected: Apple Silicon ($ARCH)"
     ;;
   x86_64|amd64)
-    ARCH_KEY="intel"
+    ARCH_KEY="x86_64"
     echo "Detected: Intel ($ARCH)"
     ;;
   *)
@@ -26,80 +24,80 @@ case "$ARCH" in
     ;;
 esac
 
-# 2. Resolve the correct asset from the tagged release
-API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
+# 2. Fetch latest release (NOT tag-based)
+API_URL="https://api.github.com/repos/$REPO/releases/latest"
 echo "🔎 Fetching release metadata..."
 
 Arcadia_URL=$(curl -fsSL "$API_URL" | python3 - "$ARCH_KEY" <<'PY'
 import json, sys
-arch_key = sys.argv[1].lower()
+
+arch = sys.argv[1].lower()
+
 try:
     data = json.load(sys.stdin)
-except json.JSONDecodeError as e:
-    print(f"Error: Invalid JSON from API", file=sys.stderr)
+except Exception as e:
+    print("❌ Failed to parse GitHub API response", file=sys.stderr)
     sys.exit(1)
 
-for asset in data.get("assets", []):
+assets = data.get("assets", [])
+if not assets:
+    print("❌ No assets found in release", file=sys.stderr)
+    sys.exit(1)
+
+for asset in assets:
     name = asset.get("name", "").lower()
-    if arch_key in name and name.endswith(".zip"):
-        url = asset.get("browser_download_url", "")
-        if url:
-            print(url)
-            sys.exit(0)
+    if arch in name and name.endswith(".zip"):
+        print(asset["browser_download_url"])
+        sys.exit(0)
+
+print(f"❌ No asset matching architecture '{arch}'", file=sys.stderr)
 sys.exit(1)
 PY
-) || {
-  echo "❌ No release asset found for architecture '$ARCH_KEY' in tag '$TAG'."
-  exit 1
-}
+)
 
 FILE_NAME=$(basename "$Arcadia_URL")
-TMP_ZIP="/tmp/Arcadia_Install_${ARCH_KEY}.zip"
+TMP_ZIP="/tmp/Arcadia_${ARCH_KEY}.zip"
+
 echo "🔗 Target URL: $Arcadia_URL"
 echo "📦 Using asset: $FILE_NAME"
 
-# 3. Cleanup old installation
+# 3. Remove old install
 if [ -d "/Applications/Arcadia.app" ]; then
-  echo "Updating existing installation..."
+  echo "♻️  Removing existing installation..."
   rm -rf /Applications/Arcadia.app
 fi
 
 # 4. Download
-echo "📥 Downloading $FILE_NAME..."
-curl -fL "$Arcadia_URL" -o "$TMP_ZIP" || {
-  echo ""
-  echo "❌ Download failed. Please verify that '$FILE_NAME' is still attached to the '$TAG' release."
-  exit 1
-}
+echo "📥 Downloading..."
+curl -fL "$Arcadia_URL" -o "$TMP_ZIP"
 
-# 5. Unzip
+# 5. Extract
 echo "📂 Extracting..."
 rm -rf /tmp/Arcadia_Extract
 mkdir -p /tmp/Arcadia_Extract
-unzip -o -q "$TMP_ZIP" -d /tmp/Arcadia_Extract
+unzip -q "$TMP_ZIP" -d /tmp/Arcadia_Extract
 
-# 6. Locate .app bundle
+# 6. Find app
 APP_SRC=$(find /tmp/Arcadia_Extract -name "Arcadia.app" -type d | head -n1)
-
 if [ -z "$APP_SRC" ]; then
-  echo "❌ Error: Could not find Arcadia.app inside the zip."
+  echo "❌ Arcadia.app not found in archive"
   exit 1
 fi
 
 # 7. Install
-echo "💾 Moving to Applications..."
-if [ -w "/Applications" ]; then
-    mv "$APP_SRC" "/Applications/Arcadia.app"
+echo "💾 Installing..."
+if [ -w /Applications ]; then
+  mv "$APP_SRC" /Applications/Arcadia.app
 else
-    sudo mv "$APP_SRC" "/Applications/Arcadia.app"
+  sudo mv "$APP_SRC" /Applications/Arcadia.app
 fi
 
-# 8. Fix macOS "Damaged App" error
+# 8. Fix Gatekeeper
 echo "🛡️  Removing quarantine flags..."
 xattr -rd com.apple.quarantine /Applications/Arcadia.app 2>/dev/null || true
 
 # 9. Cleanup
-rm "$TMP_ZIP"
+rm -f "$TMP_ZIP"
 rm -rf /tmp/Arcadia_Extract
 
 echo ""
