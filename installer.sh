@@ -24,7 +24,7 @@ fi
 
 # 2. Construct the direct URL
 # This bypasses the "latest" redirect which was causing your 404
-Arcadia_URL="https://github.com/$REPO/releases/download/$TAG/$FILE_NAME"
+Arcadia_URL="https://github.com/thelastligma/Arcadia/releases/tag/Releases"
 TMP_ZIP="/tmp/Arcadia_Install.zip"
 
 echo "🔗 Target URL: $Arcadia_URL"
